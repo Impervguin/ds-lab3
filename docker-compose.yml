@@ -1,9 +1,8 @@
-version: "3"
 services:
   postgres:
     image: library/postgres:13
     container_name: postgres
-    restart: on-failure
+    restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: "postgres"
@@ -13,8 +12,87 @@ services:
       - ./postgres/:/docker-entrypoint-initdb.d/
     ports:
       - "5432:5432"
+    networks:
+      - pg-net
 
-# TODO добавить сервисы
+  rating:
+    build: ./rating
+    container_name: rating
+    hostname: rating
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      HTTP_PORT: 8050
+      DATABASE_URL: postgresql://program:test@postgres:5432/ratings
+      LOG_LEVEL: INFO
+    ports:
+      - "8050:8050"
+    networks:
+      - pg-net
+
+  library:
+    build: ./library
+    container_name: library
+    hostname: library
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      HTTP_PORT: 8060
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: program
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: libraries
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+      SERVICE_NAME: library
+    ports:
+      - "8060:8060"
+    networks:
+      - pg-net
+
+  reservation:
+    build: ./reservation
+    container_name: reservation
+    hostname: reservation
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    environment:
+      HTTP_PORT: 8070
+      DATABASE_URL: postgresql://program:test@postgres:5432/reservations
+      LOG_LEVEL: INFO
+    ports:
+      - "8070:8070"
+    networks:
+      - pg-net
+
+  gateway:
+    build: ./gateway
+    container_name: gateway
+    hostname: gateway
+    restart: unless-stopped
+    depends_on:
+      - library
+      - reservation
+      - rating
+    environment:
+      HTTP_PORT: 8080
+      LIBRARY_SERVICE_URL: http://library:8060
+      RESERVATION_SERVICE_URL: http://reservation:8070
+      RATING_SERVICE_URL: http://rating:8050
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+      SERVICE_NAME: gateway
+    networks:
+      - pg-net
+    ports:
+      - "8080:8080"
 
 volumes:
   db-data:
+
+networks:
+  pg-net:
