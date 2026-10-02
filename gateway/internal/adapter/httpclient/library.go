@@ -13,12 +13,13 @@ import (
 
 type LibraryClient struct {
 	transport HttpDoer
+	retryer   *HttpRetryer
 }
 
 var _ usecase.LibraryService = (*LibraryClient)(nil)
 
-func NewLibraryClient(transport HttpDoer) *LibraryClient {
-	return &LibraryClient{transport: transport}
+func NewLibraryClient(transport HttpDoer, retryer *HttpRetryer) *LibraryClient {
+	return &LibraryClient{transport: transport, retryer: retryer}
 }
 
 func (c *LibraryClient) ListLibraries(
@@ -95,9 +96,9 @@ func (c *LibraryClient) GetBook(ctx context.Context, bookUID uuid.UUID) (*domain
 	return &book, nil
 }
 
-func (c *LibraryClient) TakeBook(ctx context.Context, libraryUID, bookUID uuid.UUID) (*domain.BookCopy, error) {
+func (c *LibraryClient) TakeBook(ctx context.Context, libraryUID, bookUID uuid.UUID, inQueue bool) (*domain.BookCopy, error) {
 	var response bookCopyResponse
-	if err := c.transport.do(ctx, call{
+	if err := doOrQueue(ctx, c.transport, c.retryer, inQueue, call{
 		method: http.MethodPost,
 		path:   copyPath(libraryUID, bookUID, "take"),
 		out:    &response,
@@ -117,9 +118,10 @@ func (c *LibraryClient) ReturnBook(
 	ctx context.Context,
 	libraryUID, bookUID uuid.UUID,
 	condition domain.BookCondition,
+	inQueue bool,
 ) (*domain.BookCopy, error) {
 	var response bookCopyResponse
-	if err := c.transport.do(ctx, call{
+	if err := doOrQueue(ctx, c.transport, c.retryer, inQueue, call{
 		method:   http.MethodPost,
 		path:     copyPath(libraryUID, bookUID, "return"),
 		body:     returnBookRequest{Condition: string(condition)},

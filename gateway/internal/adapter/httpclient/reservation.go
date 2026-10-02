@@ -13,12 +13,13 @@ import (
 
 type ReservationClient struct {
 	transport HttpDoer
+	retryer   *HttpRetryer
 }
 
 var _ usecase.ReservationService = (*ReservationClient)(nil)
 
-func NewReservationClient(transport HttpDoer) *ReservationClient {
-	return &ReservationClient{transport: transport}
+func NewReservationClient(transport HttpDoer, retryer *HttpRetryer) *ReservationClient {
+	return &ReservationClient{transport: transport, retryer: retryer}
 }
 
 func (c *ReservationClient) ListReservations(
@@ -68,9 +69,10 @@ func (c *ReservationClient) CreateReservation(
 	ctx context.Context,
 	username string,
 	request domain.NewReservation,
+	inQueue bool,
 ) (*domain.Reservation, error) {
 	var response reservationResponse
-	if err := c.transport.do(ctx, call{
+	if err := doOrQueue(ctx, c.transport, c.retryer, inQueue, call{
 		method:   http.MethodPost,
 		path:     "/api/v1/reservations",
 		username: username,
@@ -94,9 +96,10 @@ func (c *ReservationClient) ReturnReservation(
 	username string,
 	reservationUID uuid.UUID,
 	date domain.Date,
+	inQueue bool,
 ) (*domain.Reservation, error) {
 	var response reservationResponse
-	if err := c.transport.do(ctx, call{
+	if err := doOrQueue(ctx, c.transport, c.retryer, inQueue, call{
 		method:   http.MethodPost,
 		path:     "/api/v1/reservations/" + reservationUID.String() + "/return",
 		username: username,

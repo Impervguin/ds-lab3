@@ -12,12 +12,13 @@ import (
 
 type RatingClient struct {
 	transport HttpDoer
+	retryer   *HttpRetryer
 }
 
 var _ usecase.RatingService = (*RatingClient)(nil)
 
-func NewRatingClient(transport HttpDoer) *RatingClient {
-	return &RatingClient{transport: transport}
+func NewRatingClient(transport HttpDoer, retryer *HttpRetryer) *RatingClient {
+	return &RatingClient{transport: transport, retryer: retryer}
 }
 
 func (c *RatingClient) GetRating(ctx context.Context, username string) (*domain.Rating, error) {
@@ -38,9 +39,10 @@ func (c *RatingClient) CloseReservation(
 	ctx context.Context,
 	username string,
 	closed domain.ClosedReservation,
+	inQueue bool,
 ) (*domain.RatingChange, error) {
 	var response ratingChangeResponse
-	if err := c.transport.do(ctx, call{
+	if err := doOrQueue(ctx, c.transport, c.retryer, inQueue, call{
 		method:   http.MethodPost,
 		path:     "/api/v1/rating/reservation-closed",
 		username: username,

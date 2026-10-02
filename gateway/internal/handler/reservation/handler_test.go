@@ -199,14 +199,14 @@ func TestTakeBookAnswersWithTheReservationBookLibraryAndRating(t *testing.T) {
 
 	s.reservations.On("CountReservations", mock.Anything, username, domain.StatusRented).Return(0, nil)
 	s.ratings.On("GetRating", mock.Anything, username).Return(&domain.Rating{Stars: 75, MaxBooks: 25}, nil)
-	s.libraries.On("TakeBook", mock.Anything, libraryUID, bookUID).
+	s.libraries.On("TakeBook", mock.Anything, libraryUID, bookUID, false).
 		Return(&domain.BookCopy{Condition: domain.ConditionExcellent, AvailableCount: 0}, nil)
 	s.reservations.On("CreateReservation", mock.Anything, username, domain.NewReservation{
 		BookUID:         bookUID,
 		LibraryUID:      libraryUID,
 		TillDate:        date(t, "2021-10-11"),
 		ConditionAtRent: domain.ConditionExcellent,
-	}).Return(&reserved, nil)
+	}, false).Return(&reserved, nil)
 	s.catalogueAnswers()
 
 	body := `{"bookUid":"` + bookUIDValue + `","libraryUid":"` + libraryUIDValue + `","tillDate":"2021-10-11"}`
@@ -241,7 +241,7 @@ func TestTakeBookAnswersWithConflictWhenNoCopiesAreLeft(t *testing.T) {
 
 	s.reservations.On("CountReservations", mock.Anything, username, domain.StatusRented).Return(0, nil)
 	s.ratings.On("GetRating", mock.Anything, username).Return(&domain.Rating{Stars: 75, MaxBooks: 25}, nil)
-	s.libraries.On("TakeBook", mock.Anything, libraryUID, bookUID).Return(nil, domain.ErrNoAvailableCopies)
+	s.libraries.On("TakeBook", mock.Anything, libraryUID, bookUID, false).Return(nil, domain.ErrNoAvailableCopies)
 
 	body := `{"bookUid":"` + bookUIDValue + `","libraryUid":"` + libraryUIDValue + `","tillDate":"2021-10-11"}`
 	recorder := s.do(t, http.MethodPost, "/api/v1/reservations", body, asUser())
@@ -284,16 +284,16 @@ func TestReturnBookAnswersWithNoContent(t *testing.T) {
 	closed := rentedReservation(t)
 	closed.Status = domain.StatusReturned
 
-	s.reservations.On("ReturnReservation", mock.Anything, username, reservationUID, date(t, "2021-10-11")).
+	s.reservations.On("ReturnReservation", mock.Anything, username, reservationUID, date(t, "2021-10-11"), false).
 		Return(&closed, nil)
-	s.libraries.On("ReturnBook", mock.Anything, libraryUID, bookUID, domain.ConditionExcellent).
+	s.libraries.On("ReturnBook", mock.Anything, libraryUID, bookUID, domain.ConditionExcellent, true).
 		Return(&domain.BookCopy{Condition: domain.ConditionExcellent, AvailableCount: 1}, nil)
 	s.ratings.On("CloseReservation", mock.Anything, username, domain.ClosedReservation{
 		ReservationUID:    reservationUID,
 		Status:            domain.StatusReturned,
 		ConditionAtRent:   domain.ConditionExcellent,
 		ConditionOnReturn: domain.ConditionExcellent,
-	}).Return(&domain.RatingChange{Delta: 1, Stars: 76}, nil)
+	}, true).Return(&domain.RatingChange{Delta: 1, Stars: 76}, nil)
 
 	recorder := s.do(t, http.MethodPost,
 		"/api/v1/reservations/"+reservationUIDVal+"/return",
@@ -306,7 +306,7 @@ func TestReturnBookAnswersWithNoContent(t *testing.T) {
 func TestReturnBookAnswersWithNotFoundForAnUnknownReservation(t *testing.T) {
 	s := newSuite(t)
 
-	s.reservations.On("ReturnReservation", mock.Anything, username, reservationUID, date(t, "2021-10-11")).
+	s.reservations.On("ReturnReservation", mock.Anything, username, reservationUID, date(t, "2021-10-11"), false).
 		Return(nil, domain.ErrReservationNotFound)
 
 	recorder := s.do(t, http.MethodPost,
@@ -320,7 +320,7 @@ func TestReturnBookAnswersWithNotFoundForAnUnknownReservation(t *testing.T) {
 func TestReturnBookAnswersWithConflictForAClosedReservation(t *testing.T) {
 	s := newSuite(t)
 
-	s.reservations.On("ReturnReservation", mock.Anything, username, reservationUID, date(t, "2021-10-11")).
+	s.reservations.On("ReturnReservation", mock.Anything, username, reservationUID, date(t, "2021-10-11"), false).
 		Return(nil, domain.ErrReservationClosed)
 
 	recorder := s.do(t, http.MethodPost,

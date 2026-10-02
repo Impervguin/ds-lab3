@@ -7,6 +7,7 @@ import (
 
 	"github.com/Impervguin/ds-lab2/gateway/internal/domain"
 	"github.com/Impervguin/ds-lab2/gateway/internal/logger"
+	"github.com/Impervguin/ds-lab2/gateway/internal/usecase"
 )
 
 type ErrorWriter struct {
@@ -31,6 +32,8 @@ func (e ErrorWriter) Write(w http.ResponseWriter, r *http.Request, err error) {
 		WriteError(w, http.StatusConflict, "Reservation is already closed")
 	case errors.Is(err, domain.ErrBookLimitReached):
 		WriteValidationError(w, "The number of books taken has reached the limit", nil)
+	case errors.Is(err, usecase.ErrServiceUnavailable):
+		WriteError(w, http.StatusServiceUnavailable, "Service unavailable")
 	default:
 		e.log.ErrorContext(r.Context(), "request failed",
 			slog.String("method", r.Method),

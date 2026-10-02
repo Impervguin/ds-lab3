@@ -29,6 +29,14 @@ const (
 	circuitBreakerOpenTimeout = 10 * time.Second
 )
 
+var retryerConfig = httpclient.RetryerConfig{
+	Workers:        2,
+	Capacity:       1024,
+	BaseDelay:      2 * time.Second,
+	MaxDelay:       10 * time.Second,
+	AttemptTimeout: 5 * time.Second,
+}
+
 func main() {
 	if err := logger.Init(logger.FromEnv("gateway")); err != nil {
 		fmt.Fprintf(os.Stderr, "configure logging: %v\n", err)
@@ -49,9 +57,23 @@ func run(log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// The retryer outlives the signal: it stops only after the server has
+	// drained, so requests queued by the last handlers are not lost silently.
+	retryer := httpclient.NewHttpRetryer(retryerConfig)
+	retryCtx, stopRetries := context.WithCancel(context.Background())
+	retryDone := make(chan struct{})
+	go func() {
+		retryer.Run(retryCtx)
+		close(retryDone)
+	}()
+	defer func() {
+		stopRetries()
+		<-retryDone
+	}()
+
 	server := &http.Server{
 		Addr:              net.JoinHostPort("", env("HTTP_PORT", "8080")),
-		Handler:           newRouter(),
+		Handler:           newRouter(retryer),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -79,10 +101,10 @@ func run(log *slog.Logger) error {
 	return nil
 }
 
-func newRouter() chi.Router {
-	libraries := httpclient.NewLibraryClient(newTransport(env("LIBRARY_SERVICE_URL", "http://localhost:8060")))
-	reservations := httpclient.NewReservationClient(newTransport(env("RESERVATION_SERVICE_URL", "http://localhost:8070")))
-	ratings := httpclient.NewRatingClient(newTransport(env("RATING_SERVICE_URL", "http://localhost:8050")))
+func newRouter(retryer *httpclient.HttpRetryer) chi.Router {
+	libraries := httpclient.NewLibraryClient(newTransport(env("LIBRARY_SERVICE_URL", "http://localhost:8060")), retryer)
+	reservations := httpclient.NewReservationClient(newTransport(env("RESERVATION_SERVICE_URL", "http://localhost:8070")), retryer)
+	ratings := httpclient.NewRatingClient(newTransport(env("RATING_SERVICE_URL", "http://localhost:8050")), retryer)
 
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)

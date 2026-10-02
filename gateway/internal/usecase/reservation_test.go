@@ -26,14 +26,14 @@ func TestTakeBookCollectsReservationBookLibraryAndRating(t *testing.T) {
 
 	s.reservations.On("CountReservations", mock.Anything, username, domain.StatusRented).Return(1, nil)
 	s.ratings.On("GetRating", mock.Anything, username).Return(&domain.Rating{Stars: 75, MaxBooks: 25}, nil)
-	s.libraries.On("TakeBook", mock.Anything, libraryUID, bookUID).
+	s.libraries.On("TakeBook", mock.Anything, libraryUID, bookUID, false).
 		Return(&domain.BookCopy{Condition: domain.ConditionExcellent, AvailableCount: 0}, nil)
 	s.reservations.On("CreateReservation", mock.Anything, username, domain.NewReservation{
 		BookUID:         bookUID,
 		LibraryUID:      libraryUID,
 		TillDate:        date("2021-10-11"),
 		ConditionAtRent: domain.ConditionExcellent,
-	}).Return(&reservation, nil)
+	}, false).Return(&reservation, nil)
 	book := theBook()
 	s.libraries.On("GetBook", mock.Anything, bookUID).Return(&book, nil)
 	library := theLibrary()
@@ -54,9 +54,9 @@ func TestTakeBookPassesTheIssuedConditionToTheReservation(t *testing.T) {
 
 	s.reservations.On("CountReservations", mock.Anything, username, domain.StatusRented).Return(0, nil)
 	s.ratings.On("GetRating", mock.Anything, username).Return(&domain.Rating{Stars: 75, MaxBooks: 25}, nil)
-	s.libraries.On("TakeBook", mock.Anything, libraryUID, bookUID).
+	s.libraries.On("TakeBook", mock.Anything, libraryUID, bookUID, false).
 		Return(&domain.BookCopy{Condition: domain.ConditionBad, AvailableCount: 0}, nil)
-	s.reservations.On("CreateReservation", mock.Anything, username, mock.Anything).
+	s.reservations.On("CreateReservation", mock.Anything, username, mock.Anything, false).
 		Run(func(args mock.Arguments) {
 			request, ok := args.Get(2).(domain.NewReservation)
 			require.True(t, ok, "CreateReservation was called without a request")
@@ -82,7 +82,7 @@ func TestTakeBookStopsWhenTheBookLimitIsReached(t *testing.T) {
 	_, err := s.reservationUseCase().TakeBook(context.Background(), username, takeCommand())
 
 	assert.ErrorIs(t, err, domain.ErrBookLimitReached)
-	s.libraries.AssertNotCalled(t, "TakeBook", mock.Anything, mock.Anything, mock.Anything)
+	s.libraries.AssertNotCalled(t, "TakeBook", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestTakeBookDoesNotReserveWhenNoCopiesAreLeft(t *testing.T) {
@@ -90,12 +90,12 @@ func TestTakeBookDoesNotReserveWhenNoCopiesAreLeft(t *testing.T) {
 
 	s.reservations.On("CountReservations", mock.Anything, username, domain.StatusRented).Return(0, nil)
 	s.ratings.On("GetRating", mock.Anything, username).Return(&domain.Rating{Stars: 75, MaxBooks: 25}, nil)
-	s.libraries.On("TakeBook", mock.Anything, libraryUID, bookUID).Return(nil, domain.ErrNoAvailableCopies)
+	s.libraries.On("TakeBook", mock.Anything, libraryUID, bookUID, false).Return(nil, domain.ErrNoAvailableCopies)
 
 	_, err := s.reservationUseCase().TakeBook(context.Background(), username, takeCommand())
 
 	assert.ErrorIs(t, err, domain.ErrNoAvailableCopies)
-	s.reservations.AssertNotCalled(t, "CreateReservation", mock.Anything, mock.Anything, mock.Anything)
+	s.reservations.AssertNotCalled(t, "CreateReservation", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestTakeBookGivesTheCopyBackWhenTheReservationFails(t *testing.T) {
@@ -103,10 +103,10 @@ func TestTakeBookGivesTheCopyBackWhenTheReservationFails(t *testing.T) {
 
 	s.reservations.On("CountReservations", mock.Anything, username, domain.StatusRented).Return(0, nil)
 	s.ratings.On("GetRating", mock.Anything, username).Return(&domain.Rating{Stars: 75, MaxBooks: 25}, nil)
-	s.libraries.On("TakeBook", mock.Anything, libraryUID, bookUID).
+	s.libraries.On("TakeBook", mock.Anything, libraryUID, bookUID, false).
 		Return(&domain.BookCopy{Condition: domain.ConditionGood, AvailableCount: 0}, nil)
-	s.reservations.On("CreateReservation", mock.Anything, username, mock.Anything).Return(nil, errService)
-	s.libraries.On("ReturnBook", mock.Anything, libraryUID, bookUID, domain.ConditionGood).
+	s.reservations.On("CreateReservation", mock.Anything, username, mock.Anything, false).Return(nil, errService)
+	s.libraries.On("ReturnBook", mock.Anything, libraryUID, bookUID, domain.ConditionGood, true).
 		Return(&domain.BookCopy{Condition: domain.ConditionGood, AvailableCount: 1}, nil)
 
 	_, err := s.reservationUseCase().TakeBook(context.Background(), username, takeCommand())
@@ -119,10 +119,10 @@ func TestTakeBookSurvivesAFailedCompensation(t *testing.T) {
 
 	s.reservations.On("CountReservations", mock.Anything, username, domain.StatusRented).Return(0, nil)
 	s.ratings.On("GetRating", mock.Anything, username).Return(&domain.Rating{Stars: 75, MaxBooks: 25}, nil)
-	s.libraries.On("TakeBook", mock.Anything, libraryUID, bookUID).
+	s.libraries.On("TakeBook", mock.Anything, libraryUID, bookUID, false).
 		Return(&domain.BookCopy{Condition: domain.ConditionGood, AvailableCount: 0}, nil)
-	s.reservations.On("CreateReservation", mock.Anything, username, mock.Anything).Return(nil, errService)
-	s.libraries.On("ReturnBook", mock.Anything, libraryUID, bookUID, domain.ConditionGood).Return(nil, errService)
+	s.reservations.On("CreateReservation", mock.Anything, username, mock.Anything, false).Return(nil, errService)
+	s.libraries.On("ReturnBook", mock.Anything, libraryUID, bookUID, domain.ConditionGood, true).Return(nil, errService)
 
 	_, err := s.reservationUseCase().TakeBook(context.Background(), username, takeCommand())
 
@@ -187,16 +187,16 @@ func TestReturnBookShelvesTheCopyAndReportsTheFactsToRating(t *testing.T) {
 	closed := rentedReservation()
 	closed.Status = domain.StatusExpired
 
-	s.reservations.On("ReturnReservation", mock.Anything, username, reservationUID, date("2021-10-15")).
+	s.reservations.On("ReturnReservation", mock.Anything, username, reservationUID, date("2021-10-15"), false).
 		Return(&closed, nil)
-	s.libraries.On("ReturnBook", mock.Anything, libraryUID, bookUID, domain.ConditionBad).
+	s.libraries.On("ReturnBook", mock.Anything, libraryUID, bookUID, domain.ConditionBad, true).
 		Return(&domain.BookCopy{Condition: domain.ConditionBad, AvailableCount: 1}, nil)
 	s.ratings.On("CloseReservation", mock.Anything, username, domain.ClosedReservation{
 		ReservationUID:    reservationUID,
 		Status:            domain.StatusExpired,
 		ConditionAtRent:   domain.ConditionExcellent,
 		ConditionOnReturn: domain.ConditionBad,
-	}).Return(&domain.RatingChange{Delta: -20, Stars: 55}, nil)
+	}, true).Return(&domain.RatingChange{Delta: -20, Stars: 55}, nil)
 
 	err := s.reservationUseCase().ReturnBook(context.Background(), username, usecase.ReturnBookCommand{
 		ReservationUID: reservationUID,
@@ -210,7 +210,7 @@ func TestReturnBookShelvesTheCopyAndReportsTheFactsToRating(t *testing.T) {
 func TestReturnBookStopsWhenTheReservationIsUnknown(t *testing.T) {
 	s := newSuite(t)
 
-	s.reservations.On("ReturnReservation", mock.Anything, username, reservationUID, date("2021-10-11")).
+	s.reservations.On("ReturnReservation", mock.Anything, username, reservationUID, date("2021-10-11"), false).
 		Return(nil, domain.ErrReservationNotFound)
 
 	err := s.reservationUseCase().ReturnBook(context.Background(), username, usecase.ReturnBookCommand{
@@ -220,8 +220,8 @@ func TestReturnBookStopsWhenTheReservationIsUnknown(t *testing.T) {
 	})
 
 	assert.ErrorIs(t, err, domain.ErrReservationNotFound)
-	s.libraries.AssertNotCalled(t, "ReturnBook", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
-	s.ratings.AssertNotCalled(t, "CloseReservation", mock.Anything, mock.Anything, mock.Anything)
+	s.libraries.AssertNotCalled(t, "ReturnBook", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	s.ratings.AssertNotCalled(t, "CloseReservation", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func TestReturnBookDoesNotTouchRatingWhenTheLibraryFails(t *testing.T) {
@@ -229,9 +229,9 @@ func TestReturnBookDoesNotTouchRatingWhenTheLibraryFails(t *testing.T) {
 	closed := rentedReservation()
 	closed.Status = domain.StatusReturned
 
-	s.reservations.On("ReturnReservation", mock.Anything, username, reservationUID, date("2021-10-11")).
+	s.reservations.On("ReturnReservation", mock.Anything, username, reservationUID, date("2021-10-11"), false).
 		Return(&closed, nil)
-	s.libraries.On("ReturnBook", mock.Anything, libraryUID, bookUID, domain.ConditionExcellent).
+	s.libraries.On("ReturnBook", mock.Anything, libraryUID, bookUID, domain.ConditionExcellent, true).
 		Return(nil, domain.ErrBookNotFound)
 
 	err := s.reservationUseCase().ReturnBook(context.Background(), username, usecase.ReturnBookCommand{
@@ -241,5 +241,44 @@ func TestReturnBookDoesNotTouchRatingWhenTheLibraryFails(t *testing.T) {
 	})
 
 	assert.ErrorIs(t, err, domain.ErrBookNotFound)
-	s.ratings.AssertNotCalled(t, "CloseReservation", mock.Anything, mock.Anything, mock.Anything)
+	s.ratings.AssertNotCalled(t, "CloseReservation", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestReturnBookSucceedsWhenLibraryAndRatingAreQueued(t *testing.T) {
+	s := newSuite(t)
+	closed := rentedReservation()
+	closed.Status = domain.StatusReturned
+
+	s.reservations.On("ReturnReservation", mock.Anything, username, reservationUID, date("2021-10-11"), false).
+		Return(&closed, nil)
+	s.libraries.On("ReturnBook", mock.Anything, libraryUID, bookUID, domain.ConditionExcellent, true).
+		Return(nil, usecase.ErrQueued)
+	s.ratings.On("CloseReservation", mock.Anything, username, mock.Anything, true).
+		Return(nil, usecase.ErrQueued)
+
+	err := s.reservationUseCase().ReturnBook(context.Background(), username, usecase.ReturnBookCommand{
+		ReservationUID: reservationUID,
+		Condition:      domain.ConditionExcellent,
+		Date:           date("2021-10-11"),
+	})
+
+	require.NoError(t, err)
+	s.ratings.AssertExpectations(t)
+}
+
+func TestTakeBookQueuesTheCompensationWhenTheLibraryIsDown(t *testing.T) {
+	s := newSuite(t)
+
+	s.reservations.On("CountReservations", mock.Anything, username, domain.StatusRented).Return(0, nil)
+	s.ratings.On("GetRating", mock.Anything, username).Return(&domain.Rating{Stars: 75, MaxBooks: 25}, nil)
+	s.libraries.On("TakeBook", mock.Anything, libraryUID, bookUID, false).
+		Return(&domain.BookCopy{Condition: domain.ConditionGood}, nil)
+	s.reservations.On("CreateReservation", mock.Anything, username, mock.Anything, false).Return(nil, errService)
+	s.libraries.On("ReturnBook", mock.Anything, libraryUID, bookUID, domain.ConditionGood, true).
+		Return(nil, usecase.ErrQueued)
+
+	_, err := s.reservationUseCase().TakeBook(context.Background(), username, takeCommand())
+
+	assert.ErrorIs(t, err, errService)
+	s.libraries.AssertExpectations(t)
 }

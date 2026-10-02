@@ -86,7 +86,7 @@ func (uc *ReservationUseCase) TakeBook(
 		return nil, domain.ErrBookLimitReached
 	}
 
-	taken, err := uc.libraries.TakeBook(ctx, command.LibraryUID, command.BookUID)
+	taken, err := uc.libraries.TakeBook(ctx, command.LibraryUID, command.BookUID, false)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func (uc *ReservationUseCase) TakeBook(
 		LibraryUID:      command.LibraryUID,
 		TillDate:        command.TillDate,
 		ConditionAtRent: taken.Condition,
-	})
+	}, false)
 	if err != nil {
 		uc.giveCopyBack(ctx, command.LibraryUID, command.BookUID, taken.Condition)
 		return nil, err
@@ -111,12 +111,21 @@ func (uc *ReservationUseCase) TakeBook(
 }
 
 func (uc *ReservationUseCase) ReturnBook(ctx context.Context, username string, command ReturnBookCommand) error {
-	reservation, err := uc.reservations.ReturnReservation(ctx, username, command.ReservationUID, command.Date)
+	reservation, err := uc.reservations.ReturnReservation(ctx, username, command.ReservationUID, command.Date, false)
 	if err != nil {
 		return err
 	}
 
-	if _, err := uc.libraries.ReturnBook(ctx, reservation.LibraryUID, reservation.BookUID, command.Condition); err != nil {
+	log := uc.log.With(
+		slog.String("username", username),
+		slog.String("reservationUid", reservation.ReservationUID.String()),
+	)
+
+	_, err = uc.libraries.ReturnBook(ctx, reservation.LibraryUID, reservation.BookUID, command.Condition, true)
+	switch {
+	case errors.Is(err, ErrQueued):
+		log.WarnContext(ctx, "library is unavailable, returning the copy later")
+	case err != nil:
 		return err
 	}
 
@@ -125,14 +134,18 @@ func (uc *ReservationUseCase) ReturnBook(ctx context.Context, username string, c
 		Status:            reservation.Status,
 		ConditionAtRent:   reservation.ConditionAtRent,
 		ConditionOnReturn: command.Condition,
-	})
-	if err != nil {
+	}, true)
+	switch {
+	case errors.Is(err, ErrQueued):
+		log.WarnContext(ctx, "rating is unavailable, updating it later",
+			slog.String("status", string(reservation.Status)),
+		)
+		return nil
+	case err != nil:
 		return err
 	}
 
-	uc.log.InfoContext(ctx, "reservation closed",
-		slog.String("username", username),
-		slog.String("reservationUid", reservation.ReservationUID.String()),
+	log.InfoContext(ctx, "reservation closed",
 		slog.String("status", string(reservation.Status)),
 		slog.Int("delta", change.Delta),
 		slog.Int("stars", change.Stars),
@@ -147,7 +160,16 @@ func (uc *ReservationUseCase) giveCopyBack(
 ) {
 	ctx = context.WithoutCancel(ctx)
 
-	if _, err := uc.libraries.ReturnBook(ctx, libraryUID, bookUID, condition); err != nil {
+	_, err := uc.libraries.ReturnBook(ctx, libraryUID, bookUID, condition, true)
+	if errors.Is(err, ErrQueued) {
+		uc.log.WarnContext(ctx, "compensation queued, the copy will be returned later",
+			slog.String("libraryUid", libraryUID.String()),
+			slog.String("bookUid", bookUID.String()),
+			slog.String("condition", string(condition)),
+		)
+		return
+	}
+	if err != nil {
 		uc.log.ErrorContext(ctx, "compensation failed, the copy stays written off",
 			slog.String("libraryUid", libraryUID.String()),
 			slog.String("bookUid", bookUID.String()),

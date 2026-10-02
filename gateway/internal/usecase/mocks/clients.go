@@ -49,8 +49,12 @@ func (m *LibraryService) GetBook(ctx context.Context, bookUID uuid.UUID) (*domai
 	return book, args.Error(1)
 }
 
-func (m *LibraryService) TakeBook(ctx context.Context, libraryUID, bookUID uuid.UUID) (*domain.BookCopy, error) {
-	args := m.Called(ctx, libraryUID, bookUID)
+func (m *LibraryService) TakeBook(
+	ctx context.Context,
+	libraryUID, bookUID uuid.UUID,
+	inQueue bool,
+) (*domain.BookCopy, error) {
+	args := m.Called(ctx, libraryUID, bookUID, inQueue)
 	taken, _ := args.Get(0).(*domain.BookCopy)
 	return taken, args.Error(1)
 }
@@ -59,8 +63,9 @@ func (m *LibraryService) ReturnBook(
 	ctx context.Context,
 	libraryUID, bookUID uuid.UUID,
 	condition domain.BookCondition,
+	inQueue bool,
 ) (*domain.BookCopy, error) {
-	args := m.Called(ctx, libraryUID, bookUID, condition)
+	args := m.Called(ctx, libraryUID, bookUID, condition, inQueue)
 	shelved, _ := args.Get(0).(*domain.BookCopy)
 	return shelved, args.Error(1)
 }
@@ -94,8 +99,9 @@ func (m *ReservationService) CreateReservation(
 	ctx context.Context,
 	username string,
 	request domain.NewReservation,
+	inQueue bool,
 ) (*domain.Reservation, error) {
-	args := m.Called(ctx, username, request)
+	args := m.Called(ctx, username, request, inQueue)
 	reservation, _ := args.Get(0).(*domain.Reservation)
 	return reservation, args.Error(1)
 }
@@ -105,8 +111,9 @@ func (m *ReservationService) ReturnReservation(
 	username string,
 	reservationUID uuid.UUID,
 	date domain.Date,
+	inQueue bool,
 ) (*domain.Reservation, error) {
-	args := m.Called(ctx, username, reservationUID, date)
+	args := m.Called(ctx, username, reservationUID, date, inQueue)
 	reservation, _ := args.Get(0).(*domain.Reservation)
 	return reservation, args.Error(1)
 }
@@ -127,8 +134,9 @@ func (m *RatingService) CloseReservation(
 	ctx context.Context,
 	username string,
 	closed domain.ClosedReservation,
+	inQueue bool,
 ) (*domain.RatingChange, error) {
-	args := m.Called(ctx, username, closed)
+	args := m.Called(ctx, username, closed, inQueue)
 	change, _ := args.Get(0).(*domain.RatingChange)
 	return change, args.Error(1)
 }
