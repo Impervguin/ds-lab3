@@ -12,13 +12,13 @@ import (
 )
 
 type LibraryClient struct {
-	baseClient
+	transport HttpDoer
 }
 
 var _ usecase.LibraryService = (*LibraryClient)(nil)
 
-func NewLibraryClient(baseURL string) *LibraryClient {
-	return &LibraryClient{baseClient: newBaseClient(baseURL)}
+func NewLibraryClient(transport HttpDoer) *LibraryClient {
+	return &LibraryClient{transport: transport}
 }
 
 func (c *LibraryClient) ListLibraries(
@@ -30,7 +30,7 @@ func (c *LibraryClient) ListLibraries(
 	query.Set("city", city)
 
 	var response pageResponse[libraryResponse]
-	if err := c.do(ctx, call{
+	if err := c.transport.do(ctx, call{
 		method: http.MethodGet,
 		path:   "/api/v1/libraries",
 		query:  query,
@@ -44,7 +44,7 @@ func (c *LibraryClient) ListLibraries(
 
 func (c *LibraryClient) GetLibrary(ctx context.Context, libraryUID uuid.UUID) (*domain.Library, error) {
 	var response libraryResponse
-	if err := c.do(ctx, call{
+	if err := c.transport.do(ctx, call{
 		method:   http.MethodGet,
 		path:     "/api/v1/libraries/" + libraryUID.String(),
 		out:      &response,
@@ -67,7 +67,7 @@ func (c *LibraryClient) ListBooks(
 	query.Set("showAll", strconv.FormatBool(showAll))
 
 	var response pageResponse[libraryBookResponse]
-	if err := c.do(ctx, call{
+	if err := c.transport.do(ctx, call{
 		method:   http.MethodGet,
 		path:     "/api/v1/libraries/" + libraryUID.String() + "/books",
 		query:    query,
@@ -82,7 +82,7 @@ func (c *LibraryClient) ListBooks(
 
 func (c *LibraryClient) GetBook(ctx context.Context, bookUID uuid.UUID) (*domain.Book, error) {
 	var response bookResponse
-	if err := c.do(ctx, call{
+	if err := c.transport.do(ctx, call{
 		method:   http.MethodGet,
 		path:     "/api/v1/books/" + bookUID.String(),
 		out:      &response,
@@ -97,7 +97,7 @@ func (c *LibraryClient) GetBook(ctx context.Context, bookUID uuid.UUID) (*domain
 
 func (c *LibraryClient) TakeBook(ctx context.Context, libraryUID, bookUID uuid.UUID) (*domain.BookCopy, error) {
 	var response bookCopyResponse
-	if err := c.do(ctx, call{
+	if err := c.transport.do(ctx, call{
 		method: http.MethodPost,
 		path:   copyPath(libraryUID, bookUID, "take"),
 		out:    &response,
@@ -119,7 +119,7 @@ func (c *LibraryClient) ReturnBook(
 	condition domain.BookCondition,
 ) (*domain.BookCopy, error) {
 	var response bookCopyResponse
-	if err := c.do(ctx, call{
+	if err := c.transport.do(ctx, call{
 		method:   http.MethodPost,
 		path:     copyPath(libraryUID, bookUID, "return"),
 		body:     returnBookRequest{Condition: string(condition)},

@@ -11,18 +11,18 @@ import (
 )
 
 type RatingClient struct {
-	baseClient
+	transport HttpDoer
 }
 
 var _ usecase.RatingService = (*RatingClient)(nil)
 
-func NewRatingClient(baseURL string) *RatingClient {
-	return &RatingClient{baseClient: newBaseClient(baseURL)}
+func NewRatingClient(transport HttpDoer) *RatingClient {
+	return &RatingClient{transport: transport}
 }
 
 func (c *RatingClient) GetRating(ctx context.Context, username string) (*domain.Rating, error) {
 	var response ratingResponse
-	if err := c.do(ctx, call{
+	if err := c.transport.do(ctx, call{
 		method:   http.MethodGet,
 		path:     "/api/v1/rating",
 		username: username,
@@ -40,7 +40,7 @@ func (c *RatingClient) CloseReservation(
 	closed domain.ClosedReservation,
 ) (*domain.RatingChange, error) {
 	var response ratingChangeResponse
-	if err := c.do(ctx, call{
+	if err := c.transport.do(ctx, call{
 		method:   http.MethodPost,
 		path:     "/api/v1/rating/reservation-closed",
 		username: username,

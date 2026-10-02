@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
 	"github.com/google/uuid"
@@ -197,7 +198,9 @@ func (c *catalogue) book(ctx context.Context, bookUID uuid.UUID) (*domain.Book, 
 	}
 
 	book, err := c.libraries.GetBook(ctx, bookUID)
-	if err != nil {
+	if errors.Is(err, ErrServiceUnavailable) {
+		book = &domain.Book{BookUID: bookUID}
+	} else if err != nil {
 		return nil, err
 	}
 	c.books[bookUID] = *book
@@ -210,7 +213,9 @@ func (c *catalogue) library(ctx context.Context, libraryUID uuid.UUID) (*domain.
 	}
 
 	library, err := c.libraries.GetLibrary(ctx, libraryUID)
-	if err != nil {
+	if errors.Is(err, ErrServiceUnavailable) {
+		library = &domain.Library{LibraryUID: libraryUID}
+	} else if err != nil {
 		return nil, err
 	}
 	c.places[libraryUID] = *library

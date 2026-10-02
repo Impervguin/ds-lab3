@@ -12,13 +12,13 @@ import (
 )
 
 type ReservationClient struct {
-	baseClient
+	transport HttpDoer
 }
 
 var _ usecase.ReservationService = (*ReservationClient)(nil)
 
-func NewReservationClient(baseURL string) *ReservationClient {
-	return &ReservationClient{baseClient: newBaseClient(baseURL)}
+func NewReservationClient(transport HttpDoer) *ReservationClient {
+	return &ReservationClient{transport: transport}
 }
 
 func (c *ReservationClient) ListReservations(
@@ -27,7 +27,7 @@ func (c *ReservationClient) ListReservations(
 	status domain.ReservationStatus,
 ) ([]domain.Reservation, error) {
 	var response []reservationResponse
-	if err := c.do(ctx, call{
+	if err := c.transport.do(ctx, call{
 		method:   http.MethodGet,
 		path:     "/api/v1/reservations",
 		query:    statusQuery(status),
@@ -52,7 +52,7 @@ func (c *ReservationClient) CountReservations(
 	var response struct {
 		Count int `json:"count"`
 	}
-	if err := c.do(ctx, call{
+	if err := c.transport.do(ctx, call{
 		method:   http.MethodGet,
 		path:     "/api/v1/reservations/count",
 		query:    statusQuery(status),
@@ -70,7 +70,7 @@ func (c *ReservationClient) CreateReservation(
 	request domain.NewReservation,
 ) (*domain.Reservation, error) {
 	var response reservationResponse
-	if err := c.do(ctx, call{
+	if err := c.transport.do(ctx, call{
 		method:   http.MethodPost,
 		path:     "/api/v1/reservations",
 		username: username,
@@ -96,7 +96,7 @@ func (c *ReservationClient) ReturnReservation(
 	date domain.Date,
 ) (*domain.Reservation, error) {
 	var response reservationResponse
-	if err := c.do(ctx, call{
+	if err := c.transport.do(ctx, call{
 		method:   http.MethodPost,
 		path:     "/api/v1/reservations/" + reservationUID.String() + "/return",
 		username: username,

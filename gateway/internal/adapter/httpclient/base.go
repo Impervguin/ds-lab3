@@ -18,13 +18,19 @@ const UserNameHeader = "X-User-Name"
 
 const requestTimeout = 5 * time.Second
 
-type baseClient struct {
+type HttpDoer interface {
+	do(ctx context.Context, call call) error
+}
+
+type BaseClient struct {
 	httpClient *http.Client
 	baseURL    string
 }
 
-func newBaseClient(baseURL string) baseClient {
-	return baseClient{
+var _ HttpDoer = (*BaseClient)(nil)
+
+func NewBaseClient(baseURL string) *BaseClient {
+	return &BaseClient{
 		baseURL:    strings.TrimSuffix(baseURL, "/"),
 		httpClient: &http.Client{Timeout: requestTimeout},
 	}
@@ -40,7 +46,7 @@ type call struct {
 	statuses map[int]error
 }
 
-func (c *baseClient) do(ctx context.Context, call call) error {
+func (c *BaseClient) do(ctx context.Context, call call) error {
 	request, err := c.newRequest(ctx, call)
 	if err != nil {
 		return err
@@ -48,32 +54,33 @@ func (c *baseClient) do(ctx context.Context, call call) error {
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return fmt.Errorf("call %s %s: %w", call.method, call.path, err)
+		return &HttpClientError{netErr: fmt.Errorf("call %s %s: %w", call.method, call.path, err)}
 	}
 	defer func() { _ = response.Body.Close() }()
 
 	if response.StatusCode >= http.StatusBadRequest {
-		if mapped, ok := call.statuses[response.StatusCode]; ok {
-			return mapped
+		statusCode := response.StatusCode
+		if mapped, ok := call.statuses[statusCode]; ok {
+			return &HttpClientError{StatusCode: &statusCode, wrapped: mapped}
 		}
-		return fmt.Errorf("call %s %s: %w", call.method, call.path, unexpectedStatus(response))
+		return unexpectedStatus(call, response)
 	}
 
 	if call.out == nil {
 		return nil
 	}
 	if err := json.NewDecoder(response.Body).Decode(call.out); err != nil {
-		return fmt.Errorf("decode %s %s response: %w", call.method, call.path, err)
+		return &HttpClientError{wrapped: fmt.Errorf("decode %s %s response: %w", call.method, call.path, err)}
 	}
 	return nil
 }
 
-func (c *baseClient) newRequest(ctx context.Context, call call) (*http.Request, error) {
+func (c *BaseClient) newRequest(ctx context.Context, call call) (*http.Request, error) {
 	var body io.Reader
 	if call.body != nil {
 		encoded, err := json.Marshal(call.body)
 		if err != nil {
-			return nil, fmt.Errorf("encode %s %s request: %w", call.method, call.path, err)
+			return nil, &HttpClientError{wrapped: fmt.Errorf("encode %s %s request: %w", call.method, call.path, err)}
 		}
 		body = bytes.NewReader(encoded)
 	}
@@ -85,7 +92,7 @@ func (c *baseClient) newRequest(ctx context.Context, call call) (*http.Request, 
 
 	request, err := http.NewRequestWithContext(ctx, call.method, target, body)
 	if err != nil {
-		return nil, fmt.Errorf("build %s %s request: %w", call.method, call.path, err)
+		return nil, &HttpClientError{wrapped: fmt.Errorf("build %s %s request: %w", call.method, call.path, err)}
 	}
 	if call.body != nil {
 		request.Header.Set("Content-Type", "application/json")
@@ -96,14 +103,20 @@ func (c *baseClient) newRequest(ctx context.Context, call call) (*http.Request, 
 	return request, nil
 }
 
-func unexpectedStatus(response *http.Response) error {
+func unexpectedStatus(call call, response *http.Response) error {
+	statusCode := response.StatusCode
+	clientErr := &HttpClientError{
+		StatusCode: &statusCode,
+		wrapped:    fmt.Errorf("call %s %s: unexpected status", call.method, call.path),
+	}
+
 	var payload struct {
 		Message string `json:"message"`
 	}
-	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil || payload.Message == "" {
-		return fmt.Errorf("unexpected status %d", response.StatusCode)
+	if err := json.NewDecoder(response.Body).Decode(&payload); err == nil && payload.Message != "" {
+		clientErr.Message = &payload.Message
 	}
-	return fmt.Errorf("unexpected status %d: %s", response.StatusCode, payload.Message)
+	return clientErr
 }
 
 type pageResponse[T any] struct {
@@ -132,4 +145,36 @@ func paging(page, size int) url.Values {
 		"page": {fmt.Sprint(page)},
 		"size": {fmt.Sprint(size)},
 	}
+}
+
+type HttpClientError struct {
+	StatusCode *int
+	Message    *string
+	netErr     error
+	wrapped    error
+}
+
+func (e *HttpClientError) Error() string {
+	if e.netErr != nil {
+		return e.netErr.Error()
+	}
+
+	msg := "http error"
+	if e.StatusCode != nil {
+		msg += fmt.Sprintf(" with status %d", *e.StatusCode)
+	}
+	if e.Message != nil {
+		msg += fmt.Sprintf(" (%s)", *e.Message)
+	}
+	if e.wrapped != nil {
+		msg += ": " + e.wrapped.Error()
+	}
+	return msg
+}
+
+func (e *HttpClientError) Unwrap() error {
+	if e.netErr != nil {
+		return e.netErr
+	}
+	return e.wrapped
 }

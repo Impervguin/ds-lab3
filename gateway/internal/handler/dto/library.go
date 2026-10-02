@@ -7,9 +7,9 @@ import (
 
 type LibraryResponse struct {
 	LibraryUID string `json:"libraryUid"`
-	Name       string `json:"name"`
-	Address    string `json:"address"`
-	City       string `json:"city"`
+	Name       string `json:"name,omitempty"`
+	Address    string `json:"address,omitempty"`
+	City       string `json:"city,omitempty"`
 }
 
 type LibraryPaginationResponse struct {

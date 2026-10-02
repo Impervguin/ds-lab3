@@ -7,9 +7,9 @@ import (
 
 type BookResponse struct {
 	BookUID string `json:"bookUid"`
-	Name    string `json:"name"`
-	Author  string `json:"author"`
-	Genre   string `json:"genre"`
+	Name    string `json:"name,omitempty"`
+	Author  string `json:"author,omitempty"`
+	Genre   string `json:"genre,omitempty"`
 }
 
 type LibraryBookResponse struct {

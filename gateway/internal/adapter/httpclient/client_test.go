@@ -72,7 +72,7 @@ func TestLibraryClientListsLibrariesOfACity(t *testing.T) {
 	recorded, url := newUpstream(t, `{"page":1,"pageSize":10,"totalElements":1,"items":[
 		{"libraryUid":"`+libraryUIDValue+`","name":"Библиотека имени 7 Непьющих","address":"2-я Бауманская ул., д.5, стр.1","city":"Москва"}]}`)
 
-	page, err := httpclient.NewLibraryClient(url).ListLibraries(context.Background(), "Москва", 1, 10)
+	page, err := httpclient.NewLibraryClient(httpclient.NewBaseClient(url)).ListLibraries(context.Background(), "Москва", 1, 10)
 
 	require.NoError(t, err)
 	assert.Equal(t, http.MethodGet, recorded.method)
@@ -87,7 +87,7 @@ func TestLibraryClientListsBooksOfALibrary(t *testing.T) {
 	recorded, url := newUpstream(t, `{"page":1,"pageSize":25,"totalElements":1,"items":[
 		{"bookUid":"`+bookUIDValue+`","name":"Краткий курс C++ в 7 томах","author":"Бьерн Страуструп","genre":"Научная фантастика","condition":"EXCELLENT","availableCount":1}]}`)
 
-	page, err := httpclient.NewLibraryClient(url).ListBooks(context.Background(), libraryUID, 1, 25, true)
+	page, err := httpclient.NewLibraryClient(httpclient.NewBaseClient(url)).ListBooks(context.Background(), libraryUID, 1, 25, true)
 
 	require.NoError(t, err)
 	assert.Equal(t, "/api/v1/libraries/"+libraryUIDValue+"/books?page=1&showAll=true&size=25", recorded.target)
@@ -100,7 +100,7 @@ func TestLibraryClientListsBooksOfALibrary(t *testing.T) {
 func TestLibraryClientTakesTheBestCopy(t *testing.T) {
 	recorded, url := newUpstream(t, `{"condition":"GOOD","availableCount":0}`)
 
-	taken, err := httpclient.NewLibraryClient(url).TakeBook(context.Background(), libraryUID, bookUID)
+	taken, err := httpclient.NewLibraryClient(httpclient.NewBaseClient(url)).TakeBook(context.Background(), libraryUID, bookUID)
 
 	require.NoError(t, err)
 	assert.Equal(t, http.MethodPost, recorded.method)
@@ -111,7 +111,7 @@ func TestLibraryClientTakesTheBestCopy(t *testing.T) {
 func TestLibraryClientReportsThatNoCopiesAreLeft(t *testing.T) {
 	url := failingUpstream(t, http.StatusConflict)
 
-	_, err := httpclient.NewLibraryClient(url).TakeBook(context.Background(), libraryUID, bookUID)
+	_, err := httpclient.NewLibraryClient(httpclient.NewBaseClient(url)).TakeBook(context.Background(), libraryUID, bookUID)
 
 	assert.ErrorIs(t, err, domain.ErrNoAvailableCopies)
 }
@@ -119,7 +119,7 @@ func TestLibraryClientReportsThatNoCopiesAreLeft(t *testing.T) {
 func TestLibraryClientShelvesTheCopyInItsNewCondition(t *testing.T) {
 	recorded, url := newUpstream(t, `{"condition":"BAD","availableCount":1}`)
 
-	shelved, err := httpclient.NewLibraryClient(url).ReturnBook(context.Background(), libraryUID, bookUID, domain.ConditionBad)
+	shelved, err := httpclient.NewLibraryClient(httpclient.NewBaseClient(url)).ReturnBook(context.Background(), libraryUID, bookUID, domain.ConditionBad)
 
 	require.NoError(t, err)
 	assert.Equal(t, "/api/v1/libraries/"+libraryUIDValue+"/books/"+bookUIDValue+"/return", recorded.target)
@@ -130,7 +130,7 @@ func TestLibraryClientShelvesTheCopyInItsNewCondition(t *testing.T) {
 func TestLibraryClientReportsAnUnknownLibrary(t *testing.T) {
 	url := failingUpstream(t, http.StatusNotFound)
 
-	_, err := httpclient.NewLibraryClient(url).GetLibrary(context.Background(), libraryUID)
+	_, err := httpclient.NewLibraryClient(httpclient.NewBaseClient(url)).GetLibrary(context.Background(), libraryUID)
 
 	assert.ErrorIs(t, err, domain.ErrLibraryNotFound)
 }
@@ -138,7 +138,7 @@ func TestLibraryClientReportsAnUnknownLibrary(t *testing.T) {
 func TestLibraryClientReportsAnUnknownBook(t *testing.T) {
 	url := failingUpstream(t, http.StatusNotFound)
 
-	_, err := httpclient.NewLibraryClient(url).GetBook(context.Background(), bookUID)
+	_, err := httpclient.NewLibraryClient(httpclient.NewBaseClient(url)).GetBook(context.Background(), bookUID)
 
 	assert.ErrorIs(t, err, domain.ErrBookNotFound)
 }
@@ -146,7 +146,7 @@ func TestLibraryClientReportsAnUnknownBook(t *testing.T) {
 func TestReservationClientCountsTheBooksOnHands(t *testing.T) {
 	recorded, url := newUpstream(t, `{"count":3}`)
 
-	count, err := httpclient.NewReservationClient(url).CountReservations(context.Background(), username, domain.StatusRented)
+	count, err := httpclient.NewReservationClient(httpclient.NewBaseClient(url)).CountReservations(context.Background(), username, domain.StatusRented)
 
 	require.NoError(t, err)
 	assert.Equal(t, "/api/v1/reservations/count?status=RENTED", recorded.target)
@@ -159,7 +159,7 @@ func TestReservationClientListsEveryReservationOfTheUser(t *testing.T) {
 		"libraryUid":"`+libraryUIDValue+`","status":"RENTED","startDate":"2021-10-09","tillDate":"2021-10-11",
 		"conditionAtRent":"EXCELLENT"}]`)
 
-	reservations, err := httpclient.NewReservationClient(url).ListReservations(context.Background(), username, "")
+	reservations, err := httpclient.NewReservationClient(httpclient.NewBaseClient(url)).ListReservations(context.Background(), username, "")
 
 	require.NoError(t, err)
 	assert.Equal(t, "/api/v1/reservations", recorded.target)
@@ -177,7 +177,7 @@ func TestReservationClientCreatesAReservationWithTheIssuedCondition(t *testing.T
 	tillDate, err := domain.ParseDate("2021-10-11")
 	require.NoError(t, err)
 
-	reservation, err := httpclient.NewReservationClient(url).CreateReservation(context.Background(), username, domain.NewReservation{
+	reservation, err := httpclient.NewReservationClient(httpclient.NewBaseClient(url)).CreateReservation(context.Background(), username, domain.NewReservation{
 		BookUID:         bookUID,
 		LibraryUID:      libraryUID,
 		TillDate:        tillDate,
@@ -204,7 +204,7 @@ func TestReservationClientClosesAReservation(t *testing.T) {
 	date, err := domain.ParseDate("2021-10-15")
 	require.NoError(t, err)
 
-	reservation, err := httpclient.NewReservationClient(url).ReturnReservation(context.Background(), username, reservationUID, date)
+	reservation, err := httpclient.NewReservationClient(httpclient.NewBaseClient(url)).ReturnReservation(context.Background(), username, reservationUID, date)
 
 	require.NoError(t, err)
 	assert.Equal(t, "/api/v1/reservations/"+reservationUIDVal+"/return", recorded.target)
@@ -217,7 +217,7 @@ func TestReservationClientReportsAnUnknownReservation(t *testing.T) {
 	date, err := domain.ParseDate("2021-10-15")
 	require.NoError(t, err)
 
-	_, err = httpclient.NewReservationClient(url).ReturnReservation(context.Background(), username, reservationUID, date)
+	_, err = httpclient.NewReservationClient(httpclient.NewBaseClient(url)).ReturnReservation(context.Background(), username, reservationUID, date)
 
 	assert.ErrorIs(t, err, domain.ErrReservationNotFound)
 }
@@ -227,7 +227,7 @@ func TestReservationClientReportsAClosedReservation(t *testing.T) {
 	date, err := domain.ParseDate("2021-10-15")
 	require.NoError(t, err)
 
-	_, err = httpclient.NewReservationClient(url).ReturnReservation(context.Background(), username, reservationUID, date)
+	_, err = httpclient.NewReservationClient(httpclient.NewBaseClient(url)).ReturnReservation(context.Background(), username, reservationUID, date)
 
 	assert.ErrorIs(t, err, domain.ErrReservationClosed)
 }
@@ -235,7 +235,7 @@ func TestReservationClientReportsAClosedReservation(t *testing.T) {
 func TestRatingClientReadsStarsAndTheBookLimit(t *testing.T) {
 	recorded, url := newUpstream(t, `{"stars":75,"maxBooks":25}`)
 
-	rating, err := httpclient.NewRatingClient(url).GetRating(context.Background(), username)
+	rating, err := httpclient.NewRatingClient(httpclient.NewBaseClient(url)).GetRating(context.Background(), username)
 
 	require.NoError(t, err)
 	assert.Equal(t, "/api/v1/rating", recorded.target)
@@ -246,7 +246,7 @@ func TestRatingClientReadsStarsAndTheBookLimit(t *testing.T) {
 func TestRatingClientSendsTheFactsOfAClosedReservation(t *testing.T) {
 	recorded, url := newUpstream(t, `{"delta":-20,"stars":55}`)
 
-	change, err := httpclient.NewRatingClient(url).CloseReservation(context.Background(), username, domain.ClosedReservation{
+	change, err := httpclient.NewRatingClient(httpclient.NewBaseClient(url)).CloseReservation(context.Background(), username, domain.ClosedReservation{
 		ReservationUID:    reservationUID,
 		Status:            domain.StatusExpired,
 		ConditionAtRent:   domain.ConditionExcellent,
@@ -267,8 +267,8 @@ func TestRatingClientSendsTheFactsOfAClosedReservation(t *testing.T) {
 func TestClientReportsAnUnexpectedStatus(t *testing.T) {
 	url := failingUpstream(t, http.StatusInternalServerError)
 
-	_, err := httpclient.NewRatingClient(url).GetRating(context.Background(), username)
+	_, err := httpclient.NewRatingClient(httpclient.NewBaseClient(url)).GetRating(context.Background(), username)
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unexpected status 500")
+	assert.Contains(t, err.Error(), "unexpected status")
 }

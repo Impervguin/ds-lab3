@@ -24,7 +24,10 @@ import (
 	"github.com/Impervguin/ds-lab2/gateway/internal/usecase"
 )
 
-const shutdownTimeout = 10 * time.Second
+const (
+	shutdownTimeout           = 10 * time.Second
+	circuitBreakerOpenTimeout = 10 * time.Second
+)
 
 func main() {
 	if err := logger.Init(logger.FromEnv("gateway")); err != nil {
@@ -77,9 +80,9 @@ func run(log *slog.Logger) error {
 }
 
 func newRouter() chi.Router {
-	libraries := httpclient.NewLibraryClient(env("LIBRARY_SERVICE_URL", "http://localhost:8060"))
-	reservations := httpclient.NewReservationClient(env("RESERVATION_SERVICE_URL", "http://localhost:8070"))
-	ratings := httpclient.NewRatingClient(env("RATING_SERVICE_URL", "http://localhost:8050"))
+	libraries := httpclient.NewLibraryClient(newTransport(env("LIBRARY_SERVICE_URL", "http://localhost:8060")))
+	reservations := httpclient.NewReservationClient(newTransport(env("RESERVATION_SERVICE_URL", "http://localhost:8070")))
+	ratings := httpclient.NewRatingClient(newTransport(env("RATING_SERVICE_URL", "http://localhost:8050")))
 
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
@@ -93,6 +96,12 @@ func newRouter() chi.Router {
 	).Register(router)
 
 	return router
+}
+
+// newTransport gives every upstream its own circuit breaker, so one failing
+// service does not cut off the others.
+func newTransport(baseURL string) httpclient.HttpDoer {
+	return httpclient.NewCircuitBreaker(httpclient.NewBaseClient(baseURL), circuitBreakerOpenTimeout)
 }
 
 func env(key, fallback string) string {

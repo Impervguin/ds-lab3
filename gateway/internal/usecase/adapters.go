@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
 
@@ -28,3 +29,5 @@ type RatingService interface {
 	GetRating(ctx context.Context, username string) (*domain.Rating, error)
 	CloseReservation(ctx context.Context, username string, closed domain.ClosedReservation) (*domain.RatingChange, error)
 }
+
+var ErrServiceUnavailable = errors.New("service unavailable")
